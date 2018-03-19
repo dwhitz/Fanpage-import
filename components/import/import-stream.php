@@ -227,9 +227,16 @@ class FacebookFanpageImportFacebookStream {
 
 				$i ++;
 
+                //log entry
+                FacebookFanpageImport::log(print_r($entry, true));
 				$post_title   = $this->get_post_title( $entry );
 				$post_excerpt = $this->get_post_excerpt( $entry );
+                if (empty($post_excerpt)) {
+                    $post_excerpt = $post_title;
+                }
 				$picture_url  = $this->get_post_picture_url( $entry );
+                //log picture
+                FacebookFanpageImport::log("Picture.url " . $picture_url);
 				$post_date    = $this->get_post_date( $entry );
 				$tags         = $this->get_post_tags( $entry );
 
@@ -248,11 +255,19 @@ class FacebookFanpageImportFacebookStream {
 					$attach_id = $this->fetch_picture( $picture_url, $post_id, $post_date );
 				}
 
+                FacebookFanpageImport::log("Attach.id " . $attach_id);
+                FacebookFanpageImport::log("Entry.type " . $entry->type);
+
 				// Post content
 				switch ( $entry->type ) {
 
 					case 'link':
 						$post->post_content = $this->get_link_content( $entry, $attach_id );
+
+						//force to add header image and thumbnails from link received ($attach_id)
+                        if (!empty($attach_id)) {
+                            set_post_thumbnail($post_id, $attach_id);
+                        }
 						break;
 
 					case 'status':
@@ -274,7 +289,8 @@ class FacebookFanpageImportFacebookStream {
 						$post->post_content = $this->get_photo_content( $entry, $attach_id );
 
 						if ( ! empty( $attach_id ) ) {
-							set_post_thumbnail( $post_id, $attach_id );
+                            $return = set_post_thumbnail($post_id, $attach_id);
+                            FacebookFanpageImport::log("Value returned from set thumbnail" . $return);
 						}
 
 						break;
@@ -565,6 +581,7 @@ class FacebookFanpageImportFacebookStream {
 	 */
 	private function get_post_picture_url( $entry ) {
 		$picture_url = '';
+        FacebookFanpageImport::log("Post.picture.url -  - " . print_r($entry->full_picture, true));
 		if ( property_exists( $entry, 'full_picture' ) ) {
 			$picture_url = $entry->full_picture;
 		}
