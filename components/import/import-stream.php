@@ -104,6 +104,12 @@ class FacebookFanpageImportFacebookStream {
 	 */
 	var $fpc;
 
+    /**
+     * @var boolean
+     * @since 1.0.0-beta.7
+     */
+    var $forceImport;
+
 	/**
 	 * Initializes the Component.
 	 *
@@ -155,9 +161,15 @@ class FacebookFanpageImportFacebookStream {
 
 		// Schedule import if interval set
 		if ( $this->update_interval != 'never' ) {
-			if ( ! wp_next_scheduled( 'fanpage_import' ) ) {
+
+            FacebookFanpageImport::log("NextSchedule : " . wp_next_scheduled('fanpage_import'), true);
+            FacebookFanpageImport::log('Update interval : ' . $this->update_interval);
+            if (!wp_next_scheduled('fanpage_import')) {
 				wp_schedule_event( time(), $this->update_interval, 'fanpage_import' );
 			}
+
+            //FORCE import because doesn't work the schedule event
+            $this->forceImport = true;
 		} else {
 			// get next scheduled event
 			$timestamp = wp_next_scheduled( 'fanpage_import' );
@@ -170,9 +182,21 @@ class FacebookFanpageImportFacebookStream {
 			// it's not clear whether wp_unschedule_event() clears everything,
 			// so remove existing scheduled hook as well
 			wp_clear_scheduled_hook( 'fanpage_import' );
+
+            $this->forceImport = false;
 		}
 
 		add_action( 'fanpage_import', array( $this, 'import' ) );
+
+        FacebookFanpageImport::log('Force import construct : ' . $this->varDumpToString($this->forceImport));
+
+        //i stand for minutes
+        $diff = $this->getTimeDiff(wp_next_scheduled('fanpage_import'), time(), "i");
+        FacebookFanpageImport::log('Diff in minutes : ' . $this->varDumpToString($diff));
+        if ($diff <= 20) {
+            FacebookFanpageImport::log('Start Import : ');
+            $this->import();
+        }
 	}
 
 	/**
@@ -189,20 +213,50 @@ class FacebookFanpageImportFacebookStream {
 		return self::$_instance;
 	}
 
-	/**
-	 * Importing Stream
-	 *
-	 * @param $param
-	 *
-	 * @since 1.0.0
-	 */
-	public function import() {
-		set_time_limit( 240 );
+    public function varDumpToString($var) {
+        ob_start();
+        var_dump($var);
+        $result = ob_get_clean();
+        ob_clean();
+        return $result;
+    }
 
-		$fanpage = $this->get_fanpage();
-		$entries = $this->get_entries();
+    /**
+     * @param $timeOne int unix time
+     * @param $timeTwo int unix time
+     * @param $format string type of format accepted values 'Y-m-d H:i:s' @link http://php.net/manual/en/datetime.format.php
+     * @return int the diff
+     */
+    function getTimeDiff($timeOne, $timeTwo, $format) {
 
-		$i = 0;
+        $first = new DateTime();
+        $first->setTimestamp($timeOne);
+
+        $second = new DateTime();
+        $second->setTimestamp($timeTwo);
+        $interval = $first->diff($second);
+
+        return (int)$interval->format("%" . $format);
+    }
+
+    /**
+     * Importing Stream
+     *
+     * @param $param
+     * @since 1.0.0
+     */
+    public function import() {
+//        $stop = $this->stop_import();
+        FacebookFanpageImport::log('Stop import result : ' . $this->varDumpToString($stop));
+
+        set_time_limit(300);
+
+        $fanpage = $this->get_fanpage();
+        $entries = $this->get_entries();
+        FacebookFanpageImport::log('Entries : ' . $this->varDumpToString(count($entries)));
+        FacebookFanpageImport::log('FanPage : ' . $this->varDumpToString($fanpage));
+
+        $i = 0;
 
 		if ( count( $entries ) > 0 ) {
 			$skip_existing_count  = 0;
@@ -228,7 +282,7 @@ class FacebookFanpageImportFacebookStream {
 				$i ++;
 
                 //log entry
-                FacebookFanpageImport::log(print_r($entry, true));
+//                FacebookFanpageImport::log( "Entries : " . $this->varDumpToString($entry));
 				$post_title   = $this->get_post_title( $entry );
 				$post_excerpt = $this->get_post_excerpt( $entry );
                 if (empty($post_excerpt)) {
@@ -236,7 +290,7 @@ class FacebookFanpageImportFacebookStream {
                 }
 				$picture_url  = $this->get_post_picture_url( $entry );
                 //log picture
-                FacebookFanpageImport::log("Picture.url " . $picture_url);
+                FacebookFanpageImport::log("Picture.url : " . $this->varDumpToString($picture_url));
 				$post_date    = $this->get_post_date( $entry );
 				$tags         = $this->get_post_tags( $entry );
 
@@ -412,18 +466,23 @@ class FacebookFanpageImportFacebookStream {
 	 *
 	 * @since 1.0.0
 	 */
-	private function get_entries() {
-		// get initial posts on first run or via schedule
-		if ( ( isset( $_POST ) && array_key_exists( 'fbfpi_now', $_POST ) && '' != $_POST[ 'fbfpi_now' ] ) || doing_action( 'fanpage_import' ) ) {
-			$entries = $this->fpc->get_posts( $this->update_num );
-		}
+    private function get_entries() {
+        FacebookFanpageImport::log('Force Import: ', $this->forceImport);
+
+        // get initial posts on first run or via schedule
+        if ((isset($_POST) && array_key_exists('fbfpi_now', $_POST) && '' != $_POST['fbfpi_now']) || doing_action('fanpage_import') || $this->forceImport) {
+            $entries = $this->fpc->get_posts($this->update_num);
+            FacebookFanpageImport::log('First if : true', true);
+        }
 
 		// get paged posts when selecting "next"
 		if ( isset( $_POST ) && array_key_exists( 'fbfpi_next', $_POST ) && '' != $_POST[ 'fbfpi_next' ] ) {
-			$url = get_option( '_facebook_fanpage_import_next', '' );
-			if ( ! empty( $url ) ) {
-				$entries = $this->fpc->get_posts_paged( $url );
-			}
+//			$url = get_option( '_facebook_fanpage_import_next', '' );
+//			if ( ! empty( $url ) ) {
+//				$entries = $this->fpc->get_posts_paged( $url );
+//			}
+            $entries = $this->fpc->get_posts($this->update_num);
+            FacebookFanpageImport::log('Second if : true');
 		}
 
 		$paging = $this->fpc->get_paging();
@@ -581,7 +640,7 @@ class FacebookFanpageImportFacebookStream {
 	 */
 	private function get_post_picture_url( $entry ) {
 		$picture_url = '';
-        FacebookFanpageImport::log("Post.picture.url -  - " . print_r($entry->full_picture, true));
+        FacebookFanpageImport::log("Post.picture.url : " . print_r($entry->full_picture, true));
 		if ( property_exists( $entry, 'full_picture' ) ) {
 			$picture_url = $entry->full_picture;
 		}

@@ -224,7 +224,7 @@ class FacebookFanpageImport {
 	 * Adding logs
 	 * @param $string
 	 */
-	public static function log( $string ) {
+    public static function log($string, $newLine = false) {
 		$upload_dir = wp_upload_dir();
 
 		$plugin_log_dirname = $upload_dir['basedir'] . '/facebook-fanpage-import-logs/';
@@ -233,9 +233,10 @@ class FacebookFanpageImport {
 		}
 
 		$date_time = date( 'Y-m-d - H:i:s', time() );
-		$string = $date_time . ' - ' . $string . chr( 13 );
+        //new line
+        $string = ($newLine !== false ? chr(13) : "") . $date_time . ' - ' . $string . chr(13);
 
-		$file = fopen( $plugin_log_dirname . 'fbfpi.log', 'a+');
+        $file = fopen($plugin_log_dirname . 'fbfpi.log', 'a+');
 		fputs( $file, $string );
 		fclose( $file );
 	}
