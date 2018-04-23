@@ -221,9 +221,10 @@ class FacebookFanpageImport {
 	}
 
 	/**
-	 * Adding logs
-	 * @param $string
-	 */
+     * Adding logs
+     * @param $string
+     * @param bool $newLine
+     */
     public static function log($string, $newLine = false) {
 		$upload_dir = wp_upload_dir();
 
